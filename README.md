@@ -1,109 +1,195 @@
+# Art Style Fusion Prompt Engineer
 
-# Art Style Fusion Prompt Engineering
-![Header](assets/logo.png)
+A powerful, containerized AI application for creating rich, detailed prompts by combining art styles, image descriptions, and artist inspirations. Transform your images and ideas into stunning AI-ready prompts for text-to-image generators.
 
-## Overview
+## 🚀 Quick Start
 
-Art Style Fusion Prompt Engineering is a versatile Gradio-based application that allows users to create rich, detailed prompts by combining various art styles, image descriptions, and artist inspirations. It is particularly useful for artists, writers, and AI enthusiasts looking to generate creative content with detailed prompts suitable for text to image generators that use T5 text encoders such as Flux but can further convert prompts into Adobe and Stable Diffusion-compatible (SDXL) format.
+### Prerequisites
+- Docker & Docker Compose installed
+- API key from OpenAI or OpenRouter
 
-It uses OpenAI or OpenRouter (or a mix of both) to access both text and image-based AI models, providing a seamless experience for generating prompts. OpenRouter allows for more uncensored and experimental prompts, while OpenAI provides a more controlled and curated experience with a better vision model.
+### Deploy in 3 Steps
 
-Futher adaptations will be made to use Claude and Ollama but this was so sucessful and cost effective that it was decided to keep it as is for now.
+1. **Clone & Setup**
+```bash
+git clone https://github.com/ergonomech/Art-Style-Fusion-Prompt-Enginner.git
+cd Art-Style-Fusion-Prompt-Enginner/js-app
+cp .env.example .env
+```
 
-## Installation
+2. **Configure API Keys**
+Edit `.env` file:
+```env
+OPENAI_API_KEY=sk-your_actual_key_here
+# OR  
+OPENROUTER_API_KEY=your_openrouter_key_here
+```
 
-You can install the required dependencies using either `pip` or `conda`.
+3. **Deploy**
+```bash
+docker-compose up --build -d
+```
 
-### Using pip and Python Virtual Environment
+4. **Access**
+Open http://localhost:8000 🎨
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/ergonomech/Art-Style-Fusion-Prompt-Enginner.git
-   cd Art-Style-Fusion-Prompt-Engineering
-   ```
+## 🎯 Features
 
-2. Create a virtual environment:
-   ```bash
-   python -m venv env
-   ```
+- **Image Analysis**: Upload and analyze images using AI vision models
+- **Art Style Selection**: Choose from various artistic movements and styles
+- **Artist Recommendations**: Get personalized artist suggestions
+- **Custom Inputs**: Add your own creative elements and requirements
+- **Prompt Generation**: Generate comprehensive, AI-ready prompts
+- **Export Options**: Copy to clipboard or download as text file
+- **Multiple AI Providers**: Support for OpenAI, OpenRouter, and Ollama
+- **Modern UI**: Responsive design that works on all devices
 
-3. Activate the virtual environment:
+## 📁 Project Structure
 
-   - On Windows:
-     ```bash
-     .\env\Scripts\activate
-     ```
-   - On macOS and Linux:
-     ```bash
-     source env/bin/activate
-     ```
+```text
+Art-Style-Fusion-Prompt-Enginner/
+├── js-app/                          # Main Application
+│   ├── public/                      # Frontend (HTML/CSS/JS)
+│   ├── server/                      # Backend API (Express.js)
+│   ├── deprecated_gradio_reference/ # Original Gradio app (reference)
+│   ├── Dockerfile                   # Container definition
+│   ├── docker-compose.yml          # Container orchestration
+│   └── .env.example                # Environment template
+├── README.md                        # This file
+└── LICENSE                          # MIT License
+```
 
-4. Install the required packages:
-   ```bash
-   pip install requests pillow python-dotenv
-   pip install gradio==5.29.0
-   ```
+## 🔧 Configuration
 
-### Using Conda (recommnended)
+### API Keys Setup
 
-0. Make sure you have Conda installed. If not, you can download it from [here](https://docs.conda.io/en/latest/miniconda.html).
+**OpenAI (Recommended)**
+1. Visit https://platform.openai.com/api-keys
+2. Create API key (starts with `sk-`)
+3. Add to `.env`: `OPENAI_API_KEY=sk-your_key`
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/ergonomech/Art-Style-Fusion-Prompt-Enginner.git
-   cd Art-Style-Fusion-Prompt-Engineering
-   ```
+**OpenRouter (Alternative)**
+1. Visit https://openrouter.ai/
+2. Get API key from dashboard  
+3. Add to `.env`: `OPENROUTER_API_KEY=your_key`
 
-2. Create a new Conda environment and install dependencies:
-   ```bash
-   conda create --name art-style-fusion python=3.10 requests pillow python-dotenv
-   conda activate art-style-fusion
-   pip install gradio==5.29.0
-   ```
+**Ollama (Local AI - Optional)**
+1. Install Ollama locally
+2. Run: `ollama pull llama3.2-vision`
+3. Configure in `.env`: `OLLAMA_SERVER_URL=http://host.docker.internal:11434`
 
-## Usage
+### Environment Variables
+The `.env.example` file contains all configurable options:
+- API endpoints and keys
+- Base prompts for different AI tasks
+- Server configuration
 
-1. Make sure you have the necessary API keys and configuration details. Update the `.env` file with your OpenAI and OpenRouter API keys. These variables can also be loaded from your operating system environment variables as priority.
+## 🐳 Docker Commands
 
-2. Start the application by running:
-   ```bash
-   python gradio-app.py
-   ```
+```bash
+# Start application
+docker-compose up -d
 
-3. Open your web browser and navigate to the URL provided (default is `http://127.0.0.1:7633`).
+# View logs
+docker-compose logs -f
 
-4. Use the UI to configure your inputs, upload images, select art styles, and generate prompts.
+# Stop application
+docker-compose down
 
-## Features
+# Rebuild and restart
+docker-compose up --build -d
 
-- **Art Style Selection**: Choose from a variety of art styles and get detailed descriptions.
-  ![Art Style Selection](assets/art_style_selection.png)
+# Check status
+docker-compose ps
+```
 
-- **Image Analysis**: Upload an image or input a description to get a detailed analysis.
-  ![Image Analysis](assets/image_analysis.png)
+## 🎨 How to Use
 
-- **Artist Recommendation**: Get suggestions for artists whose style matches the chosen art and image elements.
-  ![Artist Recommendation](assets/artist_recommendation.png)
+1. **Upload Image**: Drag & drop or select an image file
+2. **Choose Art Style**: Select from various artistic movements
+3. **Analyze**: AI analyzes your image and generates descriptions
+4. **Generate**: Create artist recommendations and style descriptions
+5. **Customize**: Add your own creative elements in the custom input field
+6. **Export**: Copy final prompt to clipboard or download as text file
 
-- **Prompt Generation**: Combine the selected style, image description, and artist suggestion into a cohesive prompt.
-  ![Prompt Generation](assets/prompt_generation.png)
-  ![Prompt Generation Result ComfyUI](assets/prompt_generation_used_comfyUI.png)
+## 🛠️ Development
 
-- **Stable Diffusion Conversion**: Convert prompts into Stable Diffusion-compatible format for further use.
-  ![Stable Diffusion Prompt](assets/sd_prompt.png)
-  ![Stable Diffusion Prompt](assets/sd_prompt_used_comfyUI.png)
+To modify the application:
 
-## Credits
+1. Edit source code in `js-app/`
+2. Rebuild container: `docker-compose up --build -d`
+3. View changes at http://localhost:8000
 
-- **Gradio**: Provides the interface for this application. Learn more at [Gradio's official site](https://www.gradio.app).
-- **PIL (Pillow)**: Used for image processing. Learn more at [Pillow's official site](https://python-pillow.org/).
-- **requests**: Handles API calls to OpenAI and OpenRouter.
-- **dotenv**: Manages environment variables for flexible configuration.
+### Architecture
+- **Frontend**: Vanilla JavaScript with modern CSS
+- **Backend**: Express.js REST API
+- **Container**: Multi-stage Docker build with security hardening
+- **AI Integration**: Support for multiple AI providers
 
-## Contributing
+## 🔒 Security Features
 
-Feel free to contribute to this project by opening issues or submitting pull requests. All contributions are welcome!
+- **Container Security**: Non-root user, read-only filesystem
+- **API Protection**: Rate limiting and input validation
+- **Environment Isolation**: Secure environment variable handling
+- **Health Checks**: Container monitoring and auto-restart
+- **File Validation**: Safe image upload with size and type limits
 
-## License
+## 🚨 Troubleshooting
 
-This project is licensed under the MIT License. See the `LICENSE` file for more details.
+**Container Issues**
+```bash
+# Check container status
+docker-compose ps
+
+# View detailed logs
+docker-compose logs -f
+
+# Clean restart
+docker-compose down
+docker-compose up --build -d
+```
+
+**API Issues**
+- Verify API keys in `.env` file (no extra spaces around keys)
+- Check API key has sufficient credits
+- Ensure at least one AI provider is configured
+
+**Port Conflicts**
+- Change port in `docker-compose.yml` if 8000 is in use
+- Use `docker-compose down` to stop conflicting containers
+
+## 🔄 Migration from Gradio Version
+
+This application replaces the original Gradio-based version with modern improvements:
+
+| Feature | Original Gradio | New JavaScript |
+|---------|-----------------|----------------|
+| Deployment | Python environment setup | Single Docker command |
+| Security | Basic | Container isolation + security headers |
+| Performance | Single-threaded | Optimized async processing |
+| UI/UX | Basic Gradio interface | Modern responsive web app |
+| Mobile Support | Limited | Fully responsive |
+| Error Handling | Basic | Comprehensive with user feedback |
+
+The original Gradio app is preserved in `js-app/deprecated_gradio_reference/` for reference.
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Make changes to the application code in `js-app/`
+3. Test with: `docker-compose up --build`
+4. Submit pull request
+
+## 📄 License
+
+MIT License - see [LICENSE](LICENSE) for details
+
+---
+
+**Ready to create amazing AI prompts?**
+
+```bash
+cd js-app && docker-compose up --build -d
+```
+
+Open http://localhost:8000 and start creating! 🎨

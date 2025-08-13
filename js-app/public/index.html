@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Art Style Fusion Prompt Engineer</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="header-content">
+                <h1><i class="fas fa-palette"></i> Art Style Fusion Prompt Engineer</h1>
+                <p>Create rich, detailed prompts by combining art styles, image descriptions, and artist inspirations</p>
+                <button class="settings-btn" id="settingsBtn">
+                    <i class="fas fa-cog"></i> AI Configuration
+                </button>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <!-- Step 1: Image Analysis -->
+            <section class="step-section" id="step1">
+                <div class="step-header">
+                    <h2><span class="step-number">1</span> Image Analysis</h2>
+                    <p>Upload an image for analysis or manually describe your image</p>
+                </div>
+                
+                <div class="input-tabs">
+                    <button class="tab-btn active" id="uploadTab">Upload Image</button>
+                    <button class="tab-btn" id="manualTab">Manual Description</button>
+                </div>
+
+                <div class="tab-content" id="uploadContent">
+                    <div class="upload-area" id="uploadArea">
+                        <div class="upload-placeholder">
+                            <i class="fas fa-cloud-upload-alt"></i>
+                            <p>Drag & drop an image here or <button class="link-btn" id="selectImageBtn">browse</button></p>
+                        </div>
+                        <input type="file" id="imageInput" accept="image/*" style="display: none;">
+                    </div>
+                    <div class="uploaded-image" id="uploadedImageContainer" style="display: none;">
+                        <img id="uploadedImage" alt="Uploaded image">
+                        <button class="remove-btn" id="removeImageBtn">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <button class="action-btn" id="analyzeBtn" disabled>
+                        <i class="fas fa-search"></i> Analyze Image
+                    </button>
+                </div>
+
+                <div class="tab-content hidden" id="manualContent">
+                    <textarea 
+                        id="manualDescription" 
+                        placeholder="Describe your image in detail: objects, colors, composition, mood, etc."
+                        rows="6"
+                    ></textarea>
+                    <button class="action-btn" id="useManualBtn">
+                        <i class="fas fa-pencil-alt"></i> Use Manual Description
+                    </button>
+                </div>
+
+                <div class="result-box" id="imageAnalysisResult" style="display: none;">
+                    <h3>Image Analysis</h3>
+                    <div class="result-content" id="imageAnalysisContent"></div>
+                </div>
+            </section>
+
+            <!-- Step 2: Art Style -->
+            <section class="step-section" id="step2" style="display: none;">
+                <div class="step-header">
+                    <h2><span class="step-number">2</span> Art Style</h2>
+                    <p>Enter an art style and generate its detailed description</p>
+                </div>
+                
+                <div class="input-group">
+                    <input 
+                        type="text" 
+                        id="artStyleInput" 
+                        placeholder="Enter art style (e.g., Impressionism, Cyberpunk, Art Nouveau)"
+                        class="style-input"
+                    >
+                    <button class="action-btn" id="generateStyleBtn" disabled>
+                        <i class="fas fa-magic"></i> Generate Style Description
+                    </button>
+                </div>
+
+                <div class="result-box" id="styleDescriptionResult" style="display: none;">
+                    <h3>Style Description</h3>
+                    <div class="result-content" id="styleDescriptionContent"></div>
+                </div>
+            </section>
+
+            <!-- Step 3: Artist Recommendation -->
+            <section class="step-section" id="step3" style="display: none;">
+                <div class="step-header">
+                    <h2><span class="step-number">3</span> Artist Recommendation</h2>
+                    <p>Get artist suggestions based on your image and style</p>
+                </div>
+                
+                <button class="action-btn" id="recommendArtistBtn">
+                    <i class="fas fa-user-friends"></i> Recommend Artist
+                </button>
+
+                <div class="result-box" id="artistRecommendationResult" style="display: none;">
+                    <h3>Artist Recommendation</h3>
+                    <div class="result-content" id="artistRecommendationContent"></div>
+                </div>
+            </section>
+
+            <!-- Step 4: Generate T5/Flux Prompt -->
+            <section class="step-section" id="step4" style="display: none;">
+                <div class="step-header">
+                    <h2><span class="step-number">4</span> Generate T5/Flux Prompt</h2>
+                    <p>Create a detailed prompt suitable for T5-based models like Flux</p>
+                </div>
+                
+                <div class="input-group">
+                    <textarea 
+                        id="customInputs" 
+                        placeholder="Additional requirements or modifications (optional)"
+                        rows="3"
+                    ></textarea>
+                    <button class="action-btn" id="generateFluxPromptBtn">
+                        <i class="fas fa-bolt"></i> Generate Flux Prompt
+                    </button>
+                </div>
+
+                <div class="result-box" id="fluxPromptResult" style="display: none;">
+                    <h3>T5/Flux Prompt</h3>
+                    <div class="result-content" id="fluxPromptContent"></div>
+                    <div class="result-actions">
+                        <button class="copy-btn" id="copyFluxPromptBtn">
+                            <i class="fas fa-copy"></i> Copy
+                        </button>
+                        <button class="download-btn" id="downloadFluxPromptBtn">
+                            <i class="fas fa-download"></i> Download
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Step 5: Generate SDXL Prompt -->
+            <section class="step-section" id="step5" style="display: none;">
+                <div class="step-header">
+                    <h2><span class="step-number">5</span> Generate SDXL Prompt</h2>
+                    <p>Convert to Stable Diffusion XL compatible format</p>
+                </div>
+                
+                <button class="action-btn" id="generateSDXLPromptBtn">
+                    <i class="fas fa-exchange-alt"></i> Convert to SDXL Format
+                </button>
+
+                <div class="result-box" id="sdxlPromptResult" style="display: none;">
+                    <h3>SDXL Prompt</h3>
+                    <div class="result-content" id="sdxlPromptContent"></div>
+                    <div class="result-actions">
+                        <button class="copy-btn" id="copySDXLPromptBtn">
+                            <i class="fas fa-copy"></i> Copy
+                        </button>
+                        <button class="download-btn" id="downloadSDXLPromptBtn">
+                            <i class="fas fa-download"></i> Download
+                        </button>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal" id="settingsModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Settings</h2>
+                <button class="modal-close" id="closeSettingsBtn">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="provider-section">
+                    <h3><i class="fab fa-openai"></i> OpenAI</h3>
+                    <div class="form-group">
+                        <label for="openaiKey">API Key</label>
+                        <input type="password" id="openaiKey" placeholder="sk-...">
+                    </div>
+                    <div class="form-group">
+                        <label for="openaiModel">Model</label>
+                        <select id="openaiModel"></select>
+                    </div>
+                </div>
+
+                <div class="provider-section">
+                    <h3><i class="fas fa-route"></i> OpenRouter</h3>
+                    <div class="form-group">
+                        <label for="openrouterKey">API Key</label>
+                        <input type="password" id="openrouterKey" placeholder="sk-or-v1-...">
+                    </div>
+                    <div class="form-group">
+                        <label for="openrouterModel">Model</label>
+                        <select id="openrouterModel"></select>
+                    </div>
+                </div>
+
+                <div class="provider-section">
+                    <h3><i class="fas fa-server"></i> Ollama</h3>
+                    <div class="form-group">
+                        <label for="ollamaUrl">Server URL</label>
+                        <input type="url" id="ollamaUrl" placeholder="http://localhost:11434">
+                    </div>
+                    <div class="form-group">
+                        <label for="ollamaModel">Model</label>
+                        <select id="ollamaModel"></select>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="cancel-btn" id="cancelSettingsBtn">Cancel</button>
+                <button class="save-btn" id="saveSettingsBtn">Save Settings</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay" style="display: none;">
+        <div class="loading-spinner">
+            <i class="fas fa-spinner fa-spin"></i>
+            <p id="loadingMessage">Processing...</p>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script src="script.js"></script>
+</body>
+</html>

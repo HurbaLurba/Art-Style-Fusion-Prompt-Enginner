@@ -1,0 +1,36 @@
+services:
+  art-style-fusion:
+    build: .
+    container_name: art-style-fusion-app
+    ports:
+      - "7633:8000"
+    environment:
+      NODE_ENV: production
+      PORT: 8000
+      # Optional provider hints to prefill UI (leave empty or remove if unused)
+      OPENAI_API_KEY: ""
+      OPENROUTER_API_KEY: ""
+      OLLAMA_BASE_URL: ""
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:8000/api/config', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    volumes:
+      - uploads:/tmp/uploads
+    networks:
+      - art-fusion-network
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=100m
+
+networks:
+  art-fusion-network:
+    driver: bridge
+
+volumes:
+  uploads:
