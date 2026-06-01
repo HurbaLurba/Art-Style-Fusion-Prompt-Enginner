@@ -51,7 +51,6 @@ Art-Style-Fusion-Prompt-Enginner/
 ├── js-app/                          # Main Application
 │   ├── public/                      # Frontend (HTML/CSS/JS)
 │   ├── server/                      # Backend API (Express.js)
-│   ├── deprecated_gradio_reference/ # Original Gradio app (reference)
 │   ├── Dockerfile                   # Container definition
 │   ├── docker-compose.yml          # Container orchestration
 │   └── .env.example                # Environment template
@@ -157,21 +156,6 @@ docker-compose up --build -d
 **Port Conflicts**
 - Change port in `docker-compose.yml` if 8000 is in use
 - Use `docker-compose down` to stop conflicting containers
-
-## 🔄 Migration from Gradio Version
-
-This application replaces the original Gradio-based version with modern improvements:
-
-| Feature | Original Gradio | New JavaScript |
-|---------|-----------------|----------------|
-| Deployment | Python environment setup | Single Docker command |
-| Security | Basic | Container isolation + security headers |
-| Performance | Single-threaded | Optimized async processing |
-| UI/UX | Basic Gradio interface | Modern responsive web app |
-| Mobile Support | Limited | Fully responsive |
-| Error Handling | Basic | Comprehensive with user feedback |
-
-The original Gradio app is preserved in `js-app/deprecated_gradio_reference/` for reference.
 
 ## 🤝 Contributing
 

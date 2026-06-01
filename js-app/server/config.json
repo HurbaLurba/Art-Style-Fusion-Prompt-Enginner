@@ -1,0 +1,33 @@
+{
+  "artStyles": [
+    "Impressionism",
+    "Cubism",
+    "Surrealism",
+    "Abstract Expressionism",
+    "Renaissance",
+    "Baroque",
+    "Art Nouveau",
+    "Minimalism",
+    "Pop Art",
+    "Cyberpunk",
+    "Steampunk",
+    "Ukiyo-e",
+    "Bauhaus",
+    "Pointillism",
+    "Fauvism",
+    "Expressionism",
+    "Photorealism",
+    "Vaporwave",
+    "Gothic",
+    "Pixel Art",
+    "Watercolor",
+    "Concept Art",
+    "Synthwave",
+    "Art Deco"
+  ],
+  "generation": {
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "max_tokens": 4096
+  }
+}

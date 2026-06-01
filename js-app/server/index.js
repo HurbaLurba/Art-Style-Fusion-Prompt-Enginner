@@ -2,43 +2,37 @@ const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
 const path = require('path');
-const fs = require('fs').promises;
 const sharp = require('sharp');
-const axios = require('axios');
 require('dotenv').config();
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 
+const defaults = require('./config.json');
+
 const app = express();
 const PORT = process.env.PORT || 8000;
 
-// Security middleware
-app.use(helmet());
+// Helmet CSP is disabled because the Mantine SPA injects inline <style> tags and
+// style attributes from its theme runtime; the default CSP would block them.
+// Other helmet protections remain active.
+app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
 
-// Rate limiting
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100 // limit each IP to 100 requests per windowMs
+  windowMs: 15 * 60 * 1000,
+  max: 100
 });
 app.use('/api', limiter);
 
-// Middleware
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Serve built frontend
 app.use(express.static(path.join(__dirname, '../dist')));
-app.get('*', (req, res, next) => {
-  if (req.path.startsWith('/api')) return next();
-  res.sendFile(path.join(__dirname, '../dist/index.html'));
-});
 
-// Configure multer for file uploads
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB limit
+    fileSize: 10 * 1024 * 1024
   },
   fileFilter: (req, file, cb) => {
     if (file.mimetype.startsWith('image/')) {
@@ -49,91 +43,157 @@ const upload = multer({
   }
 });
 
-// API Classes
-class APIClient {
-  constructor(key, url, model, tokenLimit = 2048, temperature = 0.7, topP = 0.9) {
-    this.key = key;
-    this.url = url;
+// Provider presets: every provider is a generic OpenAI-compatible endpoint.
+const PROVIDER_PRESETS = [
+  { id: 'openai', label: 'OpenAI', baseUrl: 'https://api.openai.com/v1', needsKey: true, defaultModel: 'gpt-4o' },
+  { id: 'openrouter', label: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', needsKey: true, defaultModel: 'openai/gpt-4o' },
+  { id: 'ollama', label: 'Ollama', baseUrl: 'http://localhost:11434/v1', needsKey: false, defaultModel: 'llama3.2-vision' },
+  { id: 'vllm', label: 'vLLM', baseUrl: 'http://localhost:8001/v1', needsKey: false, defaultModel: '' },
+  { id: 'llamacpp', label: 'llama.cpp', baseUrl: 'http://localhost:8080/v1', needsKey: false, defaultModel: '' },
+  { id: 'custom', label: 'Custom', baseUrl: '', needsKey: false, defaultModel: '' }
+];
+
+const PRESET_BY_ID = Object.fromEntries(PROVIDER_PRESETS.map((p) => [p.id, p]));
+
+function envKey(id, suffix) {
+  return `${id.toUpperCase()}_${suffix}`;
+}
+
+function stripTrailingSlash(url) {
+  return typeof url === 'string' ? url.replace(/\/+$/, '') : url;
+}
+
+// Build the effective provider config from user settings, then env, then preset.
+function resolveProvider(settings = {}) {
+  const providers = settings.providers || {};
+  const generation = settings.generation || {};
+
+  function configFor(id) {
+    const preset = PRESET_BY_ID[id] || { baseUrl: '', defaultModel: '' };
+    const user = providers[id] || {};
+    const baseUrl = stripTrailingSlash(user.baseUrl || process.env[envKey(id, 'BASE_URL')] || preset.baseUrl || '');
+    const apiKey = user.apiKey || process.env[envKey(id, 'API_KEY')] || '';
+    const model = user.model || process.env[envKey(id, 'MODEL')] || preset.defaultModel || '';
+    return { id, baseUrl, apiKey, model };
+  }
+
+  let id = settings.activeProvider || process.env.ACTIVE_PROVIDER || '';
+
+  if (!id) {
+    const usable = PROVIDER_PRESETS.map((p) => configFor(p.id)).find((c) => c.baseUrl && c.model);
+    if (usable) id = usable.id;
+  }
+
+  if (!id) {
+    throw new Error('No provider configured. Set ACTIVE_PROVIDER or supply provider settings with a baseUrl and model.');
+  }
+
+  const resolved = configFor(id);
+  if (!resolved.baseUrl || !resolved.model) {
+    throw new Error(`No provider configured for "${id}". A baseUrl and model are required.`);
+  }
+
+  const temperature = generation.temperature ?? num(process.env.GEN_TEMPERATURE) ?? defaults.generation.temperature ?? 0.7;
+  const top_p = generation.top_p ?? num(process.env.GEN_TOP_P) ?? defaults.generation.top_p ?? 0.9;
+  const max_tokens = generation.max_tokens ?? num(process.env.GEN_MAX_TOKENS) ?? defaults.generation.max_tokens ?? 4096;
+
+  return { ...resolved, temperature, top_p, max_tokens };
+}
+
+function num(value) {
+  if (value === undefined || value === null || value === '') return undefined;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+// Generic OpenAI-compatible client used for every provider.
+class OpenAICompatClient {
+  constructor({ id, baseUrl, apiKey, model, temperature, top_p, max_tokens }) {
+    this.id = id;
+    this.baseUrl = stripTrailingSlash(baseUrl);
+    this.apiKey = apiKey;
     this.model = model;
-    this.tokenLimit = tokenLimit;
     this.temperature = temperature;
-    this.topP = topP;
+    this.top_p = top_p;
+    this.max_tokens = max_tokens;
   }
 
-  async makeRequest(prompt, imageData = null) {
-    try {
-      const headers = {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.key}`
-      };
+  headers() {
+    const h = { 'Content-Type': 'application/json' };
+    if (this.apiKey) h['Authorization'] = `Bearer ${this.apiKey}`;
+    return h;
+  }
 
-      const content = [{ type: 'text', text: prompt }];
-      if (imageData) {
-        content.push({
-          type: 'image_url',
-          image_url: {
-            url: `data:image/png;base64,${imageData}`,
-            detail: 'high'
-          }
-        });
+  extractUsage(usage) {
+    if (!usage) return null;
+    const total = usage.total_tokens
+      ?? (usage.prompt_tokens != null && usage.completion_tokens != null
+        ? usage.prompt_tokens + usage.completion_tokens
+        : null);
+    return {
+      prompt: usage.prompt_tokens ?? null,
+      completion: usage.completion_tokens ?? null,
+      total: total ?? null
+    };
+  }
+
+  async chat(prompt, { imageBase64 } = {}) {
+    const url = `${this.baseUrl}/chat/completions`;
+    const content = [{ type: 'text', text: prompt }];
+    if (imageBase64) {
+      content.push({
+        type: 'image_url',
+        image_url: { url: `data:image/png;base64,${imageBase64}` }
+      });
+    }
+
+    const body = {
+      model: this.model,
+      messages: [{ role: 'user', content }],
+      max_tokens: this.max_tokens,
+      temperature: this.temperature,
+      top_p: this.top_p
+    };
+
+    const started = Date.now();
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: this.headers(),
+      body: JSON.stringify(body)
+    });
+    const durationMs = Date.now() - started;
+
+    if (!response.ok) {
+      const errText = (await response.text().catch(() => '')).slice(0, 500).trim();
+      throw new Error(`Provider request failed (${response.status} ${response.statusText}) at ${url}: ${errText}`);
+    }
+
+    const data = await response.json();
+    const text = data?.choices?.[0]?.message?.content?.trim() || '';
+    const usage = this.extractUsage(data?.usage);
+    return {
+      text,
+      meta: {
+        provider: this.id,
+        model: this.model,
+        endpoint: url,
+        ms: durationMs,
+        tokens: data?.usage?.total_tokens ?? null,
+        usage
       }
-
-      const payload = {
-        model: this.model,
-        messages: [{ role: 'user', content: content }],
-        max_tokens: this.tokenLimit,
-        temperature: this.temperature,
-        top_p: this.topP
-      };
-
-      const response = await axios.post(this.url, payload, { headers });
-      return response.data.choices[0].message.content.trim();
-    } catch (error) {
-      console.error('API Error:', error.message);
-      throw new Error(`API Error: ${error.message}`);
-    }
+    };
   }
 
-  async ollamaAnalyzeImage(imageBuffer) {
+  async listModels() {
     try {
-      const generateUrl = `${this.url}/api/generate`;
-      const base64Image = imageBuffer.toString('base64');
-      
-      const payload = {
-        model: this.model,
-        prompt: 'Analyze the image, focusing on specific objects, body types, colors, textures, gender expressions...',
-        images: [base64Image],
-        stream: false
-      };
-
-      const response = await axios.post(generateUrl, payload, {
-        headers: { 'Content-Type': 'application/json' }
-      });
-
-      return response.data.response;
-    } catch (error) {
-      console.error('Ollama API Error:', error.message);
-      throw new Error(`Ollama API Error: ${error.message}`);
-    }
-  }
-
-  async ollamaGenerateCompletion(prompt) {
-    try {
-      const generateUrl = `${this.url}/api/generate`;
-      const payload = {
-        model: this.model,
-        prompt: prompt,
-        stream: false
-      };
-
-      const response = await axios.post(generateUrl, payload, {
-        headers: { 'Content-Type': 'application/json' }
-      });
-
-      return response.data.response;
-    } catch (error) {
-      console.error('Ollama API Error:', error.message);
-      throw new Error(`Ollama API Error: ${error.message}`);
+      const url = `${this.baseUrl}/models`;
+      const response = await fetch(url, { headers: this.headers() });
+      if (!response.ok) return [];
+      const data = await response.json();
+      const list = Array.isArray(data?.data) ? data.data : [];
+      return list.map((m) => ({ value: m.id, label: m.id }));
+    } catch {
+      return [];
     }
   }
 }
@@ -143,7 +203,7 @@ class ImageProcessor {
     try {
       const image = sharp(buffer);
       const { width, height } = await image.metadata();
-      
+
       const maxPixels = 1000000;
       const ratio = width / height;
       const newHeight = Math.floor(Math.sqrt(maxPixels / ratio));
@@ -162,190 +222,95 @@ class ImageProcessor {
   }
 }
 
-// Load configuration
-let config = {};
-try {
-  const configData = require('../deprecated_gradio_reference/static_config.json');
-  config = configData;
-} catch (error) {
-  console.warn('Could not load static config, using defaults');
-  config = {
-    art_styles: ['Impressionism', 'Cubism', 'Surrealism', 'Abstract Expressionism'],
-    generation: { temperature: 0.7, top_p: 0.9, token_limit: 4096 }
-  };
+// Build a client from request settings (used by the prompt/analysis endpoints).
+function clientFromSettings(settings = {}) {
+  return new OpenAICompatClient(resolveProvider(settings));
 }
 
-// Helper function to create API client based on user settings
-function createAPIClient(userSettings = {}) {
-  // Priority: user settings > environment variables
-  const openaiKey = userSettings.openai_api_key || process.env.OPENAI_API_KEY;
-  const openaiModel = userSettings.openai_model || process.env.OPENAI_MODEL || 'gpt-4';
-  const openaiUrl = 'https://api.openai.com/v1/chat/completions';
-
-  const openrouterKey = userSettings.openrouter_api_key || process.env.OPENROUTER_API_KEY;
-  const openrouterModel = userSettings.openrouter_model || process.env.OPENROUTER_MODEL || 'openai/gpt-4';
-  const openrouterUrl = 'https://openrouter.ai/api/v1/chat/completions';
-
-  const ollamaUrl = userSettings.ollama_base_url || process.env.OLLAMA_SERVER_URL || 'http://localhost:11434';
-  const ollamaModel = userSettings.ollama_model || process.env.OLLAMA_MODEL_NAME || 'llava';
-
-  // Return the first available client
-  if (openaiKey) {
-    return { 
-      client: new APIClient(openaiKey, openaiUrl, openaiModel),
-      type: 'openai',
-      isVision: openaiModel.includes('vision') || openaiModel.includes('4')
-    };
-  }
-  
-  if (openrouterKey) {
-    return { 
-      client: new APIClient(openrouterKey, openrouterUrl, openrouterModel),
-      type: 'openrouter',
-      isVision: openrouterModel.includes('vision') || openrouterModel.includes('4')
-    };
-  }
-  
-  if (ollamaUrl && ollamaModel) {
-    return { 
-      client: new APIClient(null, ollamaUrl, ollamaModel),
-      type: 'ollama',
-      isVision: true // Assume ollama models support vision
-    };
-  }
-
-  throw new Error('No API configuration available. Please configure at least one AI provider.');
+// Build a transient client for ad-hoc baseUrl/apiKey calls (models, test).
+function transientClient(baseUrl, apiKey) {
+  return new OpenAICompatClient({
+    id: 'custom',
+    baseUrl: baseUrl || '',
+    apiKey: apiKey || '',
+    model: '',
+    temperature: defaults.generation.temperature,
+    top_p: defaults.generation.top_p,
+    max_tokens: defaults.generation.max_tokens
+  });
 }
 
 // API Routes
+
 app.get('/api/config', (req, res) => {
   res.json({
-    artStyles: config.art_styles || ['Impressionism', 'Cubism', 'Surrealism', 'Abstract Expressionism'],
-    generation: config.generation || { temperature: 0.7, top_p: 0.9, token_limit: 4096 }
+    artStyles: defaults.artStyles,
+    generation: {
+      temperature: defaults.generation.temperature,
+      top_p: defaults.generation.top_p,
+      max_tokens: defaults.generation.max_tokens
+    },
+    providerPresets: PROVIDER_PRESETS.map((p) => ({
+      id: p.id,
+      label: p.label,
+      baseUrl: p.baseUrl,
+      needsKey: p.needsKey,
+      defaultModel: p.defaultModel
+    }))
   });
 });
 
-// Expose optional env hints to prefill UI
+// Surface only env-provided values so the UI can prefill without leaking blanks.
 app.get('/api/env-hints', (req, res) => {
-  res.json({
-    OPENAI_API_KEY: process.env.OPENAI_API_KEY || '',
-    OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY || '',
-    OLLAMA_BASE_URL: process.env.OLLLAMA_BASE_URL || process.env.OLLAMA_BASE_URL || ''
-  })
-})
-
-// Get available models for each provider
-app.get('/api/models', async (req, res) => {
-  const models = {
-    openai: [
-      { value: 'gpt-4', label: 'GPT-4' },
-      { value: 'gpt-4-turbo', label: 'GPT-4 Turbo' },
-      { value: 'gpt-4-vision-preview', label: 'GPT-4 Vision' },
-      { value: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo' }
-    ],
-    openrouter: [
-      { value: 'openai/gpt-4', label: 'OpenAI GPT-4' },
-      { value: 'openai/gpt-4-turbo', label: 'OpenAI GPT-4 Turbo' },
-      { value: 'anthropic/claude-3-opus', label: 'Claude 3 Opus' },
-      { value: 'anthropic/claude-3-sonnet', label: 'Claude 3 Sonnet' },
-      { value: 'anthropic/claude-3-haiku', label: 'Claude 3 Haiku' },
-      { value: 'google/gemini-pro', label: 'Gemini Pro' },
-      { value: 'meta-llama/llama-3-70b-instruct', label: 'Llama 3 70B' }
-    ],
-    ollama: [
-      { value: 'llava', label: 'LLaVA (Vision)' },
-      { value: 'llama3', label: 'Llama 3' },
-      { value: 'mistral', label: 'Mistral' },
-      { value: 'codellama', label: 'Code Llama' },
-      { value: 'gemma', label: 'Gemma' },
-      { value: 'dolphin-mixtral', label: 'Dolphin Mixtral' }
-    ]
-  };
-
-  // If ollama_url is provided, try to fetch actual models
-  const ollamaUrl = req.query.ollama_url;
-  if (ollamaUrl) {
-    try {
-      const response = await fetch(`${ollamaUrl}/api/tags`);
-      if (response.ok) {
-        const data = await response.json();
-        if (data.models && Array.isArray(data.models)) {
-          models.ollama = data.models.map(model => ({
-            value: model.name,
-            label: model.name
-          }));
-        }
-      }
-    } catch (error) {
-      console.warn('Failed to fetch Ollama models:', error.message);
-      // Keep default models if fetch fails
-    }
+  const providers = {};
+  for (const preset of PROVIDER_PRESETS) {
+    const id = preset.id;
+    const baseUrl = process.env[envKey(id, 'BASE_URL')];
+    const apiKey = process.env[envKey(id, 'API_KEY')];
+    const model = process.env[envKey(id, 'MODEL')];
+    const entry = {};
+    if (baseUrl) entry.baseUrl = baseUrl;
+    if (apiKey) entry.apiKey = apiKey;
+    if (model) entry.model = model;
+    if (Object.keys(entry).length) providers[id] = entry;
   }
-  
-  res.json(models);
+  res.json({
+    activeProvider: process.env.ACTIVE_PROVIDER || '',
+    providers
+  });
 });
 
-// Test provider connections
-app.post('/api/test/openai', async (req, res) => {
+app.post('/api/models', async (req, res) => {
   try {
-    const { apiKey } = req.body || {}
-    if (!apiKey) return res.status(400).json({ ok: false, error: 'Missing apiKey' })
-    const url = 'https://api.openai.com/v1/models'
-    const r = await axios.get(url, { headers: { Authorization: `Bearer ${apiKey}` }})
-    return res.json({ ok: true, count: Array.isArray(r.data.data) ? r.data.data.length : 0 })
+    const { baseUrl, apiKey } = req.body || {};
+    if (!baseUrl) return res.status(400).json({ error: 'Missing baseUrl' });
+    const client = transientClient(baseUrl, apiKey);
+    const models = await client.listModels();
+    res.json({ models });
   } catch (e) {
-    return res.status(500).json({ ok: false, error: e.message })
+    res.status(500).json({ error: e.message });
   }
-})
+});
 
-app.get('/api/models/openai', async (req, res) => {
+app.post('/api/test', async (req, res) => {
   try {
-    const apiKey = req.query.apiKey
-    if (!apiKey) return res.status(400).json({ error: 'Missing apiKey' })
-    const url = 'https://api.openai.com/v1/models'
-    const r = await axios.get(url, { headers: { Authorization: `Bearer ${apiKey}` }})
-    const list = (r.data.data || []).map(m => ({ value: m.id, label: m.id }))
-    res.json({ models: list })
+    const { baseUrl, apiKey } = req.body || {};
+    if (!baseUrl) return res.status(500).json({ ok: false, error: 'Missing baseUrl' });
+    const url = `${stripTrailingSlash(baseUrl)}/models`;
+    const headers = {};
+    if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+    const response = await fetch(url, { headers });
+    if (!response.ok) {
+      const errText = (await response.text().catch(() => '')).slice(0, 300).trim();
+      return res.status(500).json({ ok: false, error: `${response.status} ${response.statusText}: ${errText}` });
+    }
+    const data = await response.json();
+    const count = Array.isArray(data?.data) ? data.data.length : 0;
+    res.json({ ok: true, count });
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    res.status(500).json({ ok: false, error: e.message });
   }
-})
-
-app.post('/api/test/openrouter', async (req, res) => {
-  try {
-    const { apiKey } = req.body || {}
-    if (!apiKey) return res.status(400).json({ ok: false, error: 'Missing apiKey' })
-    const url = 'https://openrouter.ai/api/v1/models'
-    const r = await axios.get(url, { headers: { Authorization: `Bearer ${apiKey}` }})
-    return res.json({ ok: true, count: Array.isArray(r.data.data) ? r.data.data.length : 0 })
-  } catch (e) {
-    return res.status(500).json({ ok: false, error: e.message })
-  }
-})
-
-app.get('/api/models/openrouter', async (req, res) => {
-  try {
-    const apiKey = req.query.apiKey
-    if (!apiKey) return res.status(400).json({ error: 'Missing apiKey' })
-    const url = 'https://openrouter.ai/api/v1/models'
-    const r = await axios.get(url, { headers: { Authorization: `Bearer ${apiKey}` }})
-    const list = (r.data.data || []).map(m => ({ value: m.id, label: m.name || m.id }))
-    res.json({ models: list })
-  } catch (e) {
-    res.status(500).json({ error: e.message })
-  }
-})
-
-app.post('/api/test/ollama', async (req, res) => {
-  try {
-    const { baseUrl } = req.body || {}
-    if (!baseUrl) return res.status(400).json({ ok: false, error: 'Missing baseUrl' })
-    const r = await axios.get(`${baseUrl}/api/tags`)
-    return res.json({ ok: true, count: Array.isArray(r.data.models) ? r.data.models.length : 0 })
-  } catch (e) {
-    return res.status(500).json({ ok: false, error: e.message })
-  }
-})
+});
 
 app.post('/api/analyze-image', upload.single('image'), async (req, res) => {
   try {
@@ -353,35 +318,22 @@ app.post('/api/analyze-image', upload.single('image'), async (req, res) => {
       return res.status(400).json({ error: 'No image file provided' });
     }
 
-    // Parse user settings from request
-    let userSettings = {};
+    let settings = {};
     try {
-      userSettings = req.body.settings ? JSON.parse(req.body.settings) : {};
-    } catch (error) {
+      settings = req.body.settings ? JSON.parse(req.body.settings) : {};
+    } catch {
       console.warn('Invalid settings JSON, using defaults');
     }
 
-    const base64Image = await ImageProcessor.preprocessImage(req.file.buffer);
-    
-    try {
-      const { client, type } = createAPIClient(userSettings);
-      
-      let analysis;
-      if (type === 'ollama') {
-        analysis = await client.ollamaAnalyzeImage(req.file.buffer);
-      } else {
-        const prompt = process.env.BASE_IMAGE_PROMPT || 'Analyze this image in detail, focusing on objects, colors, textures, composition, and artistic elements.';
-        analysis = await client.makeRequest(prompt, base64Image);
-      }
-      
-      return res.json({ analysis });
-    } catch (error) {
-      console.error('API client error:', error);
-      return res.status(500).json({ error: error.message });
-    }
+    const imageBase64 = await ImageProcessor.preprocessImage(req.file.buffer);
+    const client = clientFromSettings(settings);
+    const prompt = process.env.BASE_IMAGE_PROMPT
+      || 'Analyze this image in detail, focusing on objects, colors, textures, composition, and artistic elements.';
 
+    const result = await client.chat(prompt, { imageBase64 });
+    res.json({ analysis: result.text, meta: result.meta });
   } catch (error) {
-    console.error('Image analysis error:', error);
+    console.error('Image analysis error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
@@ -389,45 +341,31 @@ app.post('/api/analyze-image', upload.single('image'), async (req, res) => {
 app.post('/api/generate-style-description', async (req, res) => {
   try {
     const { style, settings = {} } = req.body;
-    
     if (!style) {
       return res.status(400).json({ error: 'Art style is required' });
     }
 
-    try {
-      const { client, type } = createAPIClient(settings);
-      
-      const basePrompt = process.env.BASE_STYLE_PROMPT || 'Describe the unique visual characteristics, techniques, and artistic elements of the selected art style in detail.';
-      const prompt = `${basePrompt} Art style: ${style}`;
-      
-      let description;
-      if (type === 'ollama') {
-        description = await client.ollamaGenerateCompletion(prompt);
-      } else {
-        description = await client.makeRequest(prompt);
-      }
-      
-      res.json({ description });
-    } catch (error) {
-      console.error('API client error:', error);
-      return res.status(500).json({ error: error.message });
-    }
+    const client = clientFromSettings(settings);
+    const basePrompt = process.env.BASE_STYLE_PROMPT
+      || 'Describe the unique visual characteristics, techniques, and artistic elements of the selected art style in detail.';
+    const prompt = `${basePrompt} Art style: ${style}`;
 
+    const result = await client.chat(prompt);
+    res.json({ description: result.text, meta: result.meta });
   } catch (error) {
-    console.error('Style description error:', error);
+    console.error('Style description error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
 
 app.post('/api/recommend-artist', async (req, res) => {
   try {
-  const { style, styleDescription, imageDescription, themes, settings = {} } = req.body;
-    
-    try {
-      const { client, type } = createAPIClient(settings);
-      
-  const basePrompt = process.env.BASE_ARTIST_PROMPT || 'Suggest an artist whose unique style matches the provided art style, described characteristics, image description, and themes. Provide one strong recommendation with a short rationale.';
-  const prompt = `${basePrompt}
+    const { style, styleDescription, imageDescription, themes, settings = {} } = req.body;
+
+    const client = clientFromSettings(settings);
+    const basePrompt = process.env.BASE_ARTIST_PROMPT
+      || 'Suggest an artist whose unique style matches the provided art style, described characteristics, image description, and themes. Provide one strong recommendation with a short rationale.';
+    const prompt = `${basePrompt}
 
   Art Style: ${style || 'Not specified'}
   Style Description: ${styleDescription || 'Not provided'}
@@ -435,22 +373,11 @@ app.post('/api/recommend-artist', async (req, res) => {
   Themes: ${themes || 'None'}
 
   Output format: Artist Name — brief rationale`;
-      
-  let recommendation;
-      if (type === 'ollama') {
-        recommendation = await client.ollamaGenerateCompletion(prompt);
-      } else {
-        recommendation = await client.makeRequest(prompt);
-      }
-      
-  res.json({ recommendation });
-    } catch (error) {
-      console.error('API client error:', error);
-      return res.status(500).json({ error: error.message });
-    }
 
+    const result = await client.chat(prompt);
+    res.json({ recommendation: result.text, meta: result.meta });
   } catch (error) {
-    console.error('Artist recommendation error:', error);
+    console.error('Artist recommendation error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
@@ -458,37 +385,24 @@ app.post('/api/recommend-artist', async (req, res) => {
 app.post('/api/generate-prompt', async (req, res) => {
   try {
     const { style, imageDescription, artistRecommendation, customInputs, settings = {} } = req.body;
-    
-    try {
-      const { client, type } = createAPIClient(settings);
-      
-      const basePrompt = process.env.BASE_PROMPT_GENERATION || 
-        'Generate a detailed art prompt that combines the visual analysis, art style, and artist recommendation into a cohesive creative description suitable for AI image generation.';
-      
-      const fullPrompt = `${basePrompt}
-      
+
+    const client = clientFromSettings(settings);
+    const basePrompt = process.env.BASE_PROMPT_GENERATION
+      || 'Generate a detailed art prompt that combines the visual analysis, art style, and artist recommendation into a cohesive creative description suitable for AI image generation.';
+
+    const fullPrompt = `${basePrompt}
+
       Art Style: ${style}
       Image Analysis: ${imageDescription}
       Artist Recommendation: ${artistRecommendation}
       Additional Requirements: ${customInputs || 'None'}
-      
-      Please create a comprehensive, detailed prompt for AI image generation that captures these elements.`;
-      
-      let prompt;
-      if (type === 'ollama') {
-        prompt = await client.ollamaGenerateCompletion(fullPrompt);
-      } else {
-        prompt = await client.makeRequest(fullPrompt);
-      }
-      
-      res.json({ prompt });
-    } catch (error) {
-      console.error('API client error:', error);
-      return res.status(500).json({ error: error.message });
-    }
 
+      Please create a comprehensive, detailed prompt for AI image generation that captures these elements.`;
+
+    const result = await client.chat(fullPrompt);
+    res.json({ prompt: result.text, meta: result.meta });
   } catch (error) {
-    console.error('Prompt generation error:', error);
+    console.error('Prompt generation error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
@@ -496,40 +410,30 @@ app.post('/api/generate-prompt', async (req, res) => {
 app.post('/api/generate-flux-prompt', async (req, res) => {
   try {
     const { style, imageDescription, styleDescription, artistRecommendation, customInputs, settings = {} } = req.body;
-    
-    try {
-      const { client, type } = createAPIClient(settings);
-      
-      const basePrompt = process.env.BASE_FLUX_PROMPT || 
-        'Generate a detailed, comprehensive prompt suitable for T5-based models like Flux. Create rich, descriptive text that captures the artistic vision.';
-      
-      const fullPrompt = `${basePrompt}
-      
+
+    const client = clientFromSettings(settings);
+    // Raise the output token ceiling specifically for the Flux/T5 style prompt.
+    client.max_tokens = Math.max(client.max_tokens || 0, 4000);
+
+    const basePrompt = process.env.BASE_FLUX_PROMPT
+      || 'Generate a detailed yet efficiently worded artistic prompt suitable for T5-based models like Flux. The final prompt MUST be between 256 and 512 words: never exceed 512 words, and do not go under 240 words unless information is missing. Avoid redundant adjectives, collapse repeated concepts, and prefer concrete visual nouns over vague filler. Use varied sentence structures for flow. Do not number or bullet; produce a single cohesive textual block.';
+
+    const fullPrompt = `${basePrompt}
+
       Art Style: ${style}
       Style Description: ${styleDescription || 'Not provided'}
       Image Description: ${imageDescription}
       Artist Recommendation: ${artistRecommendation}
       Additional Requirements: ${customInputs || 'None'}
-      
-      Please create a detailed, flowing prompt that combines all these elements into a cohesive description suitable for advanced AI image generation models like Flux that use T5 text encoders. The prompt should be descriptive, artistic, and comprehensive.`;
-      
-  let prompt;
-      if (type === 'ollama') {
-        prompt = await client.ollamaGenerateCompletion(fullPrompt);
-      } else {
-        prompt = await client.makeRequest(fullPrompt);
-      }
-  // Enforce max 256 words
-  const trimmed = (prompt || '').split(/\s+/).slice(0, 256).join(' ');
-      
-  res.json({ prompt: trimmed });
-    } catch (error) {
-      console.error('API client error:', error);
-      return res.status(500).json({ error: error.message });
-    }
 
+      TASK: Integrate only salient distinct details from the above. Strip repetition, generic hype words, and weak intensifiers. Emphasize: subject focus, composition, perspective, lighting, palette, materials/textures, mood/atmosphere, stylistic technique, and any thematic motifs. Inline style/artist influences naturally. Do NOT include explicit word counts, disclaimers, meta-instructions, or model references. Output a SINGLE PARAGRAPH within 256–512 words.`;
+
+    const result = await client.chat(fullPrompt);
+    const words = (result.text || '').split(/\s+/);
+    const capped = words.slice(0, 512).join(' ');
+    res.json({ prompt: capped, meta: { ...result.meta, enforcedWordCap: words.length > 512 ? 512 : words.length } });
   } catch (error) {
-    console.error('Flux prompt generation error:', error);
+    console.error('Flux prompt generation error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
@@ -537,49 +441,37 @@ app.post('/api/generate-flux-prompt', async (req, res) => {
 app.post('/api/generate-sdxl-prompt', async (req, res) => {
   try {
     const { fluxPrompt, settings = {} } = req.body;
-    
-    try {
-      const { client, type } = createAPIClient(settings);
-      
-      const basePrompt = process.env.BASE_SDXL_PROMPT || 
-        'Convert this detailed T5/Flux prompt into a format suitable for Stable Diffusion XL. Focus on key visual elements, style descriptors, and technical terms that work well with SDXL.';
-      
-      const fullPrompt = `${basePrompt}
-      
+
+    const client = clientFromSettings(settings);
+    const basePrompt = process.env.BASE_SDXL_PROMPT
+      || 'Convert this detailed T5/Flux prompt into a format suitable for Stable Diffusion XL. Focus on key visual elements, style descriptors, and technical terms that work well with SDXL.';
+
+    const fullPrompt = `${basePrompt}
+
       Original T5/Flux Prompt: ${fluxPrompt}
-      
+
       Please convert this into a concise, effective prompt for Stable Diffusion XL. Focus on:
       - Key visual elements and composition
       - Style and technique descriptors
       - Lighting and mood
       - Technical quality terms
       - Remove overly verbose descriptions while keeping the essence
-      
-      Create a clean, focused prompt that will work well with SDXL's training and capabilities.`;
-      
-  let prompt;
-      if (type === 'ollama') {
-        prompt = await client.ollamaGenerateCompletion(fullPrompt);
-      } else {
-        prompt = await client.makeRequest(fullPrompt);
-      }
-  // Enforce max 256 words
-  const trimmed = (prompt || '').split(/\s+/).slice(0, 256).join(' ');
-      
-  res.json({ prompt: trimmed });
-    } catch (error) {
-      console.error('API client error:', error);
-      return res.status(500).json({ error: error.message });
-    }
 
+      Create a clean, focused prompt that will work well with SDXL's training and capabilities.`;
+
+    const result = await client.chat(fullPrompt);
+    const trimmed = (result.text || '').split(/\s+/).slice(0, 256).join(' ');
+    res.json({ prompt: trimmed, meta: result.meta });
   } catch (error) {
-    console.error('SDXL prompt generation error:', error);
+    console.error('SDXL prompt generation error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
 
-// Serve the React app for all non-API routes
-app.get('*', (req, res) => {
+// Single SPA fallback. Express 5 rejects bare `app.get('*')`, so use a middleware
+// placed after all /api routes that serves the built index.html for GET navigation.
+app.use((req, res, next) => {
+  if (req.method !== 'GET' || req.path.startsWith('/api')) return next();
   res.sendFile(path.join(__dirname, '../dist/index.html'));
 });
 
@@ -590,15 +482,12 @@ app.use((error, req, res, next) => {
       return res.status(400).json({ error: 'File too large' });
     }
   }
-  
+
   console.error('Server error:', error);
   res.status(500).json({ error: 'Internal server error' });
 });
 
-// Start the server
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Art Style Fusion Server running on port ${PORT}`);
-  console.log(`📱 Frontend: http://0.0.0.0:${PORT}`);
-  console.log(`🔧 API: http://0.0.0.0:${PORT}/api`);
-  console.log(`🌐 Access from host: http://localhost:7633`);
+  console.log(`Art Style Fusion server listening on http://0.0.0.0:${PORT}`);
+  console.log('Serving the SPA from ../dist and the API under /api');
 });

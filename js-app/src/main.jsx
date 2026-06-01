@@ -1,14 +1,26 @@
 import React from 'react'
 import { createRoot } from 'react-dom/client'
-import { EuiProvider } from '@elastic/eui'
-import App from './ui/App'
+import { MantineProvider, createTheme } from '@mantine/core'
+import { Notifications } from '@mantine/notifications'
 
-// EUI v106 uses Emotion for CSS-in-JS - no separate CSS imports needed
+import '@mantine/core/styles.css'
+import '@mantine/dropzone/styles.css'
+import '@mantine/notifications/styles.css'
+
+import App from './ui/App.jsx'
+
+const theme = createTheme({
+  primaryColor: 'violet',
+  defaultRadius: 'md',
+  fontFamily:
+    '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+})
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <EuiProvider colorMode="dark">
+    <MantineProvider defaultColorScheme="dark" theme={theme}>
+      <Notifications position="top-right" />
       <App />
-    </EuiProvider>
+    </MantineProvider>
   </React.StrictMode>
 )

@@ -1,457 +1,207 @@
-# Art Style Fusion Prompt Engineer
+# 🎨 Art Style Fusion Prompt Engineer
 
-A containerized JavaScript application for creating rich, detailed prompts by combining art styles, image descriptions, and artist inspirations. Perfect for artists, writers, and AI enthusiasts looking to generate creative content with detailed prompts suitable for text-to-image generators.
+A single-page web app that helps you compose rich, production-ready text-to-image prompts by fusing AI-powered image analysis, an art style description, and an artist recommendation into both **Flux/T5** and **SDXL** prompt formats.
 
-## 🚀 Quick Start
+Works against **any OpenAI-compatible LLM backend** — cloud or local — with zero provider lock-in.
 
-### Prerequisites
-- Docker & Docker Compose installed
-- API key from OpenAI or OpenRouter
+**Features at a glance:**
 
-### 1. Clone & Configure
+- Upload an image and extract a detailed visual description via a vision model
+- Generate an art style description for any artistic movement
+- Get an artist recommendation that fits the chosen style
+- Produce a Flux/T5 prompt and an SDXL prompt from those inputs
+- Switch providers in the UI at runtime — no restarts required
+- Outputs are copyable; session state persists in localStorage
+- Dark-themed React UI, fully responsive
+
+---
+
+## 🔌 Supported AI Backends
+
+The server calls `{baseUrl}/chat/completions` and `{baseUrl}/models` — the standard OpenAI API shape. Any compliant server works.
+
+| Provider | Example Base URL | API Key Required? | Notes |
+| --- | --- | --- | --- |
+| **OpenAI** | `https://api.openai.com/v1` | Yes | `gpt-4o` is the default model |
+| **OpenRouter** | `https://openrouter.ai/api/v1` | Yes | Access 200+ models via one key |
+| **Ollama** | `http://localhost:11434/v1` | No | Run `ollama pull llama3.2-vision` for vision |
+| **vLLM** | `http://localhost:8001/v1` | No | Serve with `vllm serve <model>` |
+| **llama.cpp** | `http://localhost:8080/v1` | No | Run `llama-server -m model.gguf --port 8080` |
+| **Custom** | Any OpenAI-compatible URL | Optional | Must include the `/v1` path segment |
+
+> **Image analysis** requires a vision-capable model (one that accepts `image_url` content). Standard text-only models will fail on the analyze step.
+>
+> **Running in Docker and pointing at a local LLM?** Use `http://host.docker.internal:<port>/v1` instead of `localhost` — the compose file already adds the `host-gateway` mapping.
+
+---
+
+## 🚀 Quick Start — Docker
+
 ```bash
-git clone https://github.com/ergonomech/Art-Style-Fusion-Prompt-Enginner.git
-cd Art-Style-Fusion-Prompt-Enginner/js-app
+# Optional: prefill provider config from env vars
 cp .env.example .env
+# Edit .env if you want env-var prefill — or configure entirely in the UI
+
+docker compose up --build -d
 ```
 
-### 2. Add API Keys
-Edit `.env` file with your API keys:
-```env
-OPENAI_API_KEY=sk-your_actual_key_here
-# OR
-OPENROUTER_API_KEY=your_openrouter_key_here
-```
-
-### 3. Deploy
-```bash
-docker-compose up --build -d
-```
-
-### 4. Access
-Open http://localhost:8000
-
-## 🔧 Docker Commands
-
-```bash
-# Start
-docker-compose up -d
-
-# View logs
-docker-compose logs -f
-
-# Stop
-docker-compose down
-
-# Rebuild
-docker-compose up --build -d
-```
-
-## 🎨 Features
-
-- **Image Analysis**: Upload and analyze images using AI vision models
-- **Art Style Selection**: Choose from various artistic styles
-- **Artist Recommendations**: Get personalized artist suggestions
-- **Custom Inputs**: Add your own creative elements
-- **Prompt Generation**: Generate comprehensive, AI-ready prompts
-- **Export Options**: Copy to clipboard or download as text file
-- **Multiple AI Providers**: Support for OpenAI, OpenRouter, and Ollama
-
-## � API Keys Setup
-
-### OpenAI
-1. Visit https://platform.openai.com/api-keys
-2. Create API key (starts with `sk-`)
-3. Add to `.env`: `OPENAI_API_KEY=sk-your_key`
-
-### OpenRouter  
-1. Visit https://openrouter.ai/
-2. Get API key from dashboard
-3. Add to `.env`: `OPENROUTER_API_KEY=your_key`
-
-### Ollama (Optional)
-1. Install Ollama locally
-2. Run: `ollama pull llama3.2-vision`
-3. Configure in `.env`: `OLLAMA_SERVER_URL=http://host.docker.internal:11434`
-
-## 🏗️ Project Structure
-```
-js-app/
-├── public/                     # Frontend (HTML/CSS/JS)
-├── server/                     # Backend (Express.js API)  
-├── deprecated_gradio_reference/ # Original Gradio app
-├── Dockerfile                  # Container definition
-├── docker-compose.yml         # Container orchestration
-└── .env.example               # Environment template
-```
-
-## 🚨 Troubleshooting
-
-### Common Issues
-```bash
-# Check container status
-docker-compose ps
-
-# View logs
-docker-compose logs -f
-
-# Clean restart
-docker-compose down
-docker-compose up --build -d
-```
-
-### API Issues
-- Verify API keys in `.env` file (no extra spaces)
-- Check API key has sufficient credits
-- Ensure at least one API provider is configured
-
-## 📄 License
-
-MIT License
+Open **<http://localhost:7633>**, click the ⚙️ gear icon in the header, fill in your provider's Base URL, API Key (if needed), and Model, then hit **Test** to verify connectivity. Use the provider dropdown in the header to switch active providers.
 
 ---
 
-Ready to create amazing AI prompts? Just run `docker-compose up --build -d` and open http://localhost:8000! 🎨
+## 🛠️ Quick Start — Local Dev
 
-## 🔧 API Keys Setup
-
-### OpenAI (Recommended)
-1. Visit [platform.openai.com](https://platform.openai.com/api-keys)
-2. Create API key (starts with `sk-`)
-3. Add to `.env`: `OPENAI_API_KEY=sk-your_key`
-
-### OpenRouter (Alternative)
-1. Visit [openrouter.ai](https://openrouter.ai/)
-2. Get API key from dashboard
-3. Add to `.env`: `OPENROUTER_API_KEY=your_key`
-
-### Ollama (Local AI - Optional)
-1. Install Ollama locally
-2. Run: `ollama pull llama3.2-vision`
-3. Configure in `.env`: `OLLAMA_SERVER_URL=http://host.docker.internal:11434`
-
-## 🐳 Docker Commands
+**Node >= 20 required.**
 
 ```bash
-# Start application
-docker-compose up -d
+npm install
 
-# View logs
-docker-compose logs -f
+# Development: Vite dev server on :5173, Express API on :8000 (proxied via /api)
+npm run dev
 
-# Stop application
-docker-compose down
-
-# Rebuild and restart
-docker-compose up --build -d
-
-# Check status
-docker-compose ps
+# Production-style: build the SPA then serve everything from Express on :8000
+npm run build
+npm start
 ```
 
-## 🎨 Usage
+### npm scripts
 
-1. **Upload Image**: Drag & drop or select an image file
-2. **Choose Art Style**: Select from various artistic movements
-3. **Analyze**: AI analyzes your image and generates descriptions
-4. **Generate**: Create artist recommendations and style descriptions
-5. **Customize**: Add your own creative elements
-6. **Export**: Copy final prompt or download as text file
-
-## 🔒 Security Features
-
-- **Container Security**: Non-root user, read-only filesystem
-- **API Protection**: Rate limiting and input validation
-- **Environment Isolation**: Secure environment variable handling
-- **Health Checks**: Container monitoring and auto-restart
-
-## 📱 Browser Support
-
-- Chrome 88+
-- Firefox 85+
-- Safari 14+
-- Edge 88+
-
-## 🔧 Development
-
-To modify the application:
-
-```bash
-# Make changes to source code
-# Then rebuild container
-docker-compose up --build -d
-```
-
-### Project Structure
-```
-js-app/
-├── public/                     # Frontend (HTML/CSS/JS)
-├── server/                     # Backend (Express.js API)  
-├── deprecated_gradio_reference/ # Original Gradio app
-├── Dockerfile                  # Container definition
-├── docker-compose.yml         # Container orchestration
-├── deploy.sh / deploy.ps1     # Deployment scripts
-└── .env.example               # Environment template
-```
-
-## 🚨 Troubleshooting
-
-### Container Issues
-```bash
-# Check container status
-docker-compose ps
-
-# View detailed logs
-docker-compose logs -f art-style-fusion
-
-# Restart containers
-docker-compose restart
-
-# Clean rebuild
-docker-compose down
-docker-compose up --build -d
-```
-
-### API Issues
-- Verify API keys in `.env` file
-- Check API key has sufficient credits
-- Ensure no extra spaces around keys
-
-### Port Conflicts
-- Change port in docker-compose.yml if 8000 is in use
-- Use `docker-compose down` to stop conflicting containers
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Make changes to the application code
-3. Test with `docker-compose up --build`
-4. Submit pull request
-
-## 📄 License
-
-MIT License - see [LICENSE](../LICENSE)
+| Script | What it does |
+| --- | --- |
+| `dev` | Starts Express (nodemon) + Vite concurrently |
+| `client` | Vite dev server only |
+| `server:dev` | Express only via nodemon |
+| `build` | Vite production build into `dist/` |
+| `preview` | Vite preview of the production build |
+| `start` | Node Express server (serves built `dist/`) |
 
 ---
 
-**Ready to create amazing AI prompts?** Just run `./deploy.sh` and start creating!
+## ⚙️ Configuration
 
-## 🔧 Configuration
+### UI config flow (primary)
 
-### Environment Variables
+Open the **⚙️ AI Configuration** modal in the header. For each provider, enter:
 
-Create a `.env` file with the following variables:
+- **Base URL** — must include the `/v1` segment (e.g. `https://api.openai.com/v1`)
+- **API Key** — leave blank for keyless local servers
+- **Model** — type a model name or click **Load Models** to fetch from `/models`
+
+Click **Test** to verify the connection, then select the provider from the header dropdown to make it active. Settings persist in `localStorage`.
+
+### Env-var prefill (optional)
+
+Copy `.env.example` to `.env`. The server reads these on startup and sends them to the UI as hints (via `GET /api/env-hints`) to prefill the config modal. The `.env.example` file is the authoritative reference; key variables:
 
 ```env
-# Server Configuration
-PORT=8000
-NODE_ENV=development
+ACTIVE_PROVIDER=          # openai | openrouter | ollama | vllm | llamacpp | custom
 
-# API Keys (at least one required)
-OPENAI_API_KEY=your_openai_key_here
-OPENROUTER_API_KEY=your_openrouter_key_here
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-4o
 
-# API Endpoints
-OPENAI_URL=https://api.openai.com/v1/chat/completions
-OPENROUTER_URL=https://openrouter.ai/api/v1/chat/completions
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+OPENROUTER_API_KEY=
+OPENROUTER_MODEL=openai/gpt-4o
 
-# Ollama Configuration (optional)
-OLLAMA_SERVER_URL=http://localhost:11434
-OLLAMA_MODEL_NAME=llama3.2-vision:11b-instruct-q4_K_M
+OLLAMA_BASE_URL=http://localhost:11434/v1
+OLLAMA_MODEL=llama3.2-vision
 
-# Base Prompts (customize as needed)
-BASE_STYLE_PROMPT=Describe the unique visual characteristics of the selected art style...
-BASE_IMAGE_PROMPT=Provide a highly detailed description of the image...
-BASE_ARTIST_PROMPT=Suggest an artist whose unique style matches...
-BASE_GENERATE_PROMPT=Combine the chosen style, image description...
+VLLM_BASE_URL=http://localhost:8001/v1
+LLAMACPP_BASE_URL=http://localhost:8080/v1
+
+GEN_TEMPERATURE=0.7
+GEN_TOP_P=0.9
+GEN_MAX_TOKENS=4096
+
+# Optional prompt overrides (leave blank to use built-in defaults)
+BASE_IMAGE_PROMPT=
+BASE_STYLE_PROMPT=
+BASE_ARTIST_PROMPT=
+BASE_PROMPT_GENERATION=
+BASE_FLUX_PROMPT=
+BASE_SDXL_PROMPT=
 ```
 
-### API Keys Setup
+---
 
-1. **OpenAI API Key:**
-   - Visit https://platform.openai.com/api-keys
-   - Create a new API key
-   - Add to `.env` as `OPENAI_API_KEY`
+## 🖼️ How It Works
 
-2. **OpenRouter API Key:**
-   - Visit https://openrouter.ai/
-   - Sign up and get your API key
-   - Add to `.env` as `OPENROUTER_API_KEY`
+The workflow is a five-step pipeline — each step feeds the next:
 
-3. **Ollama (Optional):**
-   - Install Ollama locally or on a server
-   - Pull a vision model: `ollama pull llama3.2-vision`
-   - Configure server URL in `.env`
+1. **Analyze image** — upload a file; the backend preprocesses it with `sharp`, base64-encodes it, and sends it to the vision model via `image_url`. The result is a detailed visual description.
+2. **Describe art style** — given the chosen artistic movement, the model generates a style description (lighting, composition, palette, technique).
+3. **Recommend artist** — the model recommends an artist whose style fits the selected movement and the image context.
+4. **Generate Flux/T5 prompt** — combines image description + style description + artist recommendation into a T5-aware long-form prompt optimized for Flux.
+5. **Generate SDXL prompt** — produces a more tag-structured prompt in SDXL/Stable Diffusion convention.
 
-## 🏗️ Architecture
+Each step has its own **Generate** button so you can re-roll any stage independently.
 
-### Frontend
-- **Vanilla JavaScript**: Modern ES6+ features
-- **CSS Grid & Flexbox**: Responsive layout
-- **Fetch API**: HTTP requests
-- **Progressive Enhancement**: Works without JavaScript for basic functionality
+---
 
-### Backend
-- **Node.js + Express**: RESTful API server
-- **Multer**: File upload handling
-- **Sharp**: Image processing
-- **Axios**: API requests
-- **Helmet**: Security middleware
-- **Rate Limiting**: API protection
+## 📁 Project Structure
 
-### Docker
-- **Multi-stage build**: Optimized container size
-- **Non-root user**: Security best practices
-- **Health checks**: Container monitoring
-- **Volume mounts**: Persistent storage
+```
+js-app/
+├── index.html                   # Vite entry HTML
+├── vite.config.mjs              # Vite + React plugin config, /api proxy
+├── postcss.config.cjs           # PostCSS for Mantine
+├── package.json
+├── Dockerfile                   # Multi-stage build (node:24-bookworm-slim)
+├── docker-compose.yml           # Exposes host:7633 → container:8000
+├── .env.example                 # Env-var reference / prefill template
+├── src/
+│   ├── main.jsx                 # React entry, MantineProvider, theme
+│   └── ui/
+│       └── App.jsx              # Full SPA — all UI components
+└── server/
+    ├── index.js                 # Express 5 API server
+    └── config.json              # Built-in prompt defaults
+```
+
+---
 
 ## 📡 API Endpoints
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/config` | Get application configuration |
-| POST | `/api/analyze-image` | Analyze uploaded image |
-| POST | `/api/generate-style-description` | Generate art style description |
-| POST | `/api/recommend-artist` | Get artist recommendation |
-| POST | `/api/generate-prompt` | Generate final prompt |
+All endpoints are under `/api`. The UI communicates exclusively through these.
 
-## 🎨 Supported Art Styles
-
-- Impressionism
-- Cubism
-- Surrealism
-- Abstract Expressionism
-- Renaissance
-- Baroque
-- Art Nouveau
-- Minimalism
-- And more...
-
-## 🔒 Security Features
-
-- **Helmet.js**: Security headers
-- **Rate Limiting**: API protection
-- **File Validation**: Image upload security
-- **Environment Variables**: Sensitive data protection
-- **Non-root Docker User**: Container security
-- **Input Sanitization**: XSS prevention
-
-## 📱 Browser Support
-
-- Chrome 88+
-- Firefox 85+
-- Safari 14+
-- Edge 88+
-
-## 🔧 Development
-
-### Scripts
-
-```bash
-npm run dev          # Start development with hot reload
-npm run server       # Start backend only
-npm run client       # Start frontend only
-npm run build        # Build for production
-npm run preview      # Preview production build
-npm start           # Start production server
-```
-
-### Project Structure
-
-```
-js-app/
-├── public/             # Frontend files
-│   ├── index.html     # Main HTML
-│   ├── styles.css     # Styles
-│   └── script.js      # Frontend logic
-├── server/            # Backend files
-│   └── index.js       # Express server
-├── dist/              # Built files
-├── Dockerfile         # Container definition
-├── docker-compose.yml # Container orchestration
-├── package.json       # Dependencies
-└── .env              # Environment variables
-```
-
-## 🐳 Docker Deployment
-
-### Development
-```bash
-docker-compose up
-```
-
-### Production
-```bash
-docker-compose -f docker-compose.prod.yml up -d
-```
-
-### Custom Build
-```bash
-docker build -t art-style-fusion .
-docker run -p 8000:8000 --env-file .env art-style-fusion
-```
-
-## 🚨 Troubleshooting
-
-### Common Issues
-
-1. **API Key Errors:**
-   - Verify API keys in `.env` file
-   - Check API key permissions
-   - Ensure sufficient API credits
-
-2. **Image Upload Fails:**
-   - Check file size (max 10MB)
-   - Verify image format (PNG, JPG, GIF)
-   - Ensure proper file permissions
-
-3. **Docker Issues:**
-   - Check Docker and Docker Compose installation
-   - Verify port 8000 is available
-   - Check container logs: `docker-compose logs`
-
-4. **Build Errors:**
-   - Clear node_modules: `rm -rf node_modules && npm install`
-   - Check Node.js version (18+ required)
-   - Verify all dependencies are installed
-
-### Logs
-
-```bash
-# Docker logs
-docker-compose logs -f
-
-# Application logs
-npm run server  # Check console output
-```
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](../LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- Original Gradio application concept
-- OpenAI and OpenRouter for AI API services
-- Ollama for local AI model support
-- Font Awesome for icons
-- Google Fonts for typography
-
-## 📞 Support
-
-For support, please:
-1. Check the troubleshooting section
-2. Open an issue on GitHub
-3. Contact the maintainers
+| Method | Path | Description |
+| --- | --- | --- |
+| `GET` | `/api/config` | Server config + health check |
+| `GET` | `/api/env-hints` | Provider settings prefilled from env vars |
+| `POST` | `/api/models` | Fetch model list from a provider's `/models` |
+| `POST` | `/api/test` | Test connectivity to a provider |
+| `POST` | `/api/analyze-image` | Vision analysis of an uploaded image (multipart) |
+| `POST` | `/api/generate-style-description` | Art style description for a given movement |
+| `POST` | `/api/recommend-artist` | Artist recommendation for a style + context |
+| `POST` | `/api/generate-prompt` | General combined prompt |
+| `POST` | `/api/generate-flux-prompt` | Flux/T5 optimised prompt |
+| `POST` | `/api/generate-sdxl-prompt` | SDXL/SD tag-structured prompt |
 
 ---
 
-**Note**: This JavaScript application replaces the deprecated Gradio version while maintaining all core functionality with improved performance, security, and user experience.
+## 🔒 Security
+
+- **Helmet** for standard HTTP security headers (CSP intentionally disabled — Mantine's CSS-in-JS requires inline styles)
+- **Rate limiting** via `express-rate-limit` on all `/api` routes
+- **In-memory uploads** — `multer` holds the image buffer in RAM; nothing is written to disk
+- **Non-root container user** and **read-only root filesystem** in Docker; writable `/tmp` via `tmpfs` for Node internals
+- `no-new-privileges` security option in compose
+
+---
+
+## 🏗️ Tech Stack
+
+| Layer | Technology |
+| --- | --- |
+| Frontend | React 19, Mantine 8, Tabler Icons, Vite 7 |
+| Backend | Node 24, Express 5, multer 2, sharp 0.34 |
+| LLM transport | Native `fetch` — OpenAI-compatible REST |
+| Container | Docker multi-stage, `node:24-bookworm-slim` |
+| Dev tooling | Vite HMR, nodemon, concurrently, PostCSS |
+
+---
+
+## 📄 License
+
+MIT — see [`../LICENSE`](../LICENSE).
